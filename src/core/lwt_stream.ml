@@ -1031,13 +1031,11 @@ let choose streams =
           Lwt.return_none
       | l ->
           Lwt.choose (List.map snd l) >>= fun (s, x) ->
-          let l = List.remove_assq s l in
           match x with
             | Some _ ->
-                streams := source s :: l;
                 Lwt.return x
             | None ->
-                streams := l;
+                streams := List.remove_assq s !streams;
                 next ()
   in
   from next
