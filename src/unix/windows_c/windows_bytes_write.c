@@ -12,9 +12,10 @@
 #include <caml/mlvalues.h>
 #include <caml/unixsupport.h>
 
-CAMLprim value lwt_unix_bytes_write(value fd, value buf, value vofs, value vlen)
+CAMLprim value lwt_unix_bytes_write(value fd, value buf, value val_file_offset,
+                                    value vofs, value vlen)
 {
-    intnat ofs, len, written;
+    intnat ofs, len, file_offset, written;
     DWORD numbytes, numwritten;
     DWORD err = 0;
 
@@ -33,8 +34,18 @@ CAMLprim value lwt_unix_bytes_write(value fd, value buf, value vofs, value vlen)
             numwritten = ret;
         } else {
             HANDLE h = Handle_val(fd);
+            OVERLAPPED overlapped, *overlapped_ptr;
+            if (Is_long(val_file_offset)) {
+                overlapped_ptr = NULL;
+            } else {
+              file_offset = Long_val(Field(val_file_offset, 0));
+                memset( &overlapped, 0, sizeof(overlapped));
+                overlapped.OffsetHigh = (DWORD)(file_offset >> 32);
+                overlapped.Offset = (DWORD)(file_offset & 0xFFFFFFFFLL);
+                overlapped_ptr = &overlapped;
+            }
             if (!WriteFile(h, (char *)Caml_ba_array_val(buf)->data + ofs,
-                           numbytes, &numwritten, NULL))
+                           numbytes, &numwritten, overlapped_ptr))
                 err = GetLastError();
         }
         if (err) {

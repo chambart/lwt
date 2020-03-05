@@ -21,13 +21,19 @@ struct job_bytes_write {
     char *buffer;
     long length;
     long result;
+    int is_pwrite;
+    off_t offset;
     int error_code;
     value ocaml_buffer;
 };
 
 static void worker_bytes_write(struct job_bytes_write *job)
 {
-    job->result = write(job->fd, job->buffer, job->length);
+    if (job->is_pwrite) {
+      job->result = write(job->fd, job->buffer, job->length);
+    } else {
+      job->result = pwrite(job->fd, job->buffer, job->length, job->offset);
+    }
     job->error_code = errno;
 }
 
@@ -41,12 +47,19 @@ static value result_bytes_write(struct job_bytes_write *job)
 }
 
 CAMLprim value lwt_unix_bytes_write_job(value val_fd, value val_buffer,
-                                        value val_offset, value val_length)
+                                        value val_file_offset, value val_offset,
+                                        value val_length)
 {
     LWT_UNIX_INIT_JOB(job, bytes_write, 0);
     job->fd = Int_val(val_fd);
     job->buffer = (char *)Caml_ba_data_val(val_buffer) + Long_val(val_offset);
     job->length = Long_val(val_length);
+    if (Is_long(val_file_offset)) {
+      job->is_pwrite = 0;
+    } else {
+      job->is_pwrite = 1;
+      job->offset = Long_val(Field(val_file_offset, 0));
+    }
     job->ocaml_buffer = val_buffer;
     caml_register_generational_global_root(&job->ocaml_buffer);
     return lwt_unix_alloc_job(&(job->job));

@@ -719,9 +719,10 @@ let pwrite_string ch buf ~file_offset pos len =
   pwrite ch buf ~file_offset pos len
 
 external stub_write_bigarray :
-  Unix.file_descr -> bigarray -> int -> int -> int = "lwt_unix_bytes_write"
+  Unix.file_descr -> bigarray -> file_offset:int option -> int -> int -> int =
+  "lwt_unix_bytes_write"
 external write_bigarray_job :
-  Unix.file_descr -> bigarray -> int -> int -> int job =
+  Unix.file_descr -> bigarray -> file_offset:int option -> int -> int -> int job =
   "lwt_unix_bytes_write_job"
 
 let write_bigarray function_name fd buf pos len =
@@ -731,10 +732,10 @@ let write_bigarray function_name fd buf pos len =
     blocking fd >>= function
     | true ->
       wait_write fd >>= fun () ->
-      run_job (write_bigarray_job (unix_file_descr fd) buf pos len)
+      run_job (write_bigarray_job (unix_file_descr fd) buf ~file_offset:None pos len)
     | false ->
       wrap_syscall Write fd (fun () ->
-        stub_write_bigarray (unix_file_descr fd) buf pos len)
+        stub_write_bigarray (unix_file_descr fd) buf ~file_offset:None pos len)
 
 module IO_vectors =
 struct

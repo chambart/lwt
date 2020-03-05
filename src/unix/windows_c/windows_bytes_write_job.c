@@ -23,6 +23,9 @@ struct job_bytes_write {
     int kind;
     char *buffer;
     DWORD length;
+    int is_pwrite;
+    DWORD Offset;
+    DWORD OffsetHigh;
     DWORD result;
     DWORD error_code;
     value ocaml_buffer;
@@ -36,8 +39,18 @@ static void worker_bytes_write(struct job_bytes_write *job)
         if (ret == SOCKET_ERROR) job->error_code = WSAGetLastError();
         job->result = ret;
     } else {
+        OVERLAPPED overlapped, *overlapped_ptr;
+        if (Is_long(val_file_offset)) {
+            overlapped_ptr = NULL;
+        } else {
+            file_offset = Field(val_file_offset, 0);
+            memset( &overlapped, 0, sizeof(overlapped));
+            overlapped.OffsetHigh = job->OffsetHigh;
+            overlapped.Offset = job->Offset;
+            overlapped_ptr = &overlapped;
+        }
         if (!WriteFile(job->fd.handle, job->buffer, job->length, &(job->result),
-                       NULL))
+                       overlapped_ptr))
             job->error_code = GetLastError();
     }
 }
@@ -58,6 +71,7 @@ CAMLprim value result_bytes_write(struct job_bytes_write *job)
 }
 
 CAMLprim value lwt_unix_bytes_write_job(value val_fd, value val_buffer,
+                                        value val_file_offset,
                                         value val_offset, value val_length)
 {
     struct filedescr *fd = (struct filedescr *)Data_custom_val(val_fd);
@@ -68,6 +82,17 @@ CAMLprim value lwt_unix_bytes_write_job(value val_fd, value val_buffer,
         job->fd.handle = fd->fd.handle;
     else
         job->fd.socket = fd->fd.socket;
+    if (Is_long(val_file_offset)) {
+      job->is_pwrite = 0;
+    } else {
+      DWORDLONG file_offset = Long_val(Field(val_file_offset, 0));
+      if (fd->kind != KIND_HANDLE) {
+        caml_invalid_argument("Lwt_unix.pwrite");
+      }
+      job->is_pwrite = 1;
+      job->OffsetHigh = (DWORD)(file_offset >> 32);
+      job->Offset = (DWORD)(file_offset & 0xFFFFFFFFLL);
+    }
     job->buffer = (char *)Caml_ba_data_val(val_buffer) + Long_val(val_offset);
     job->length = Long_val(val_length);
     job->error_code = 0;
